@@ -106,6 +106,7 @@ public /* abstract */ class PBXTarget : PBXProjectItem {
   public lazy var buildConfigurationList: XCConfigurationList = self.object("buildConfigurationList")
   public lazy var name: String = self.string("name")!
   public lazy var productName: String = self.string("productName")!
+  public lazy var productType: PBXProductType = PBXProductType(rawValue: self.string("productType")!)!
   public lazy var buildPhases: [PBXBuildPhase] = self.objects("buildPhases")
 }
 
@@ -182,5 +183,12 @@ public enum SourceTreeFolder: String {
 public enum Path {
   case Absolute(String)
   case RelativeTo(SourceTreeFolder, String)
+}
+
+public enum PBXProductType: String {
+  case Application        = "com.apple.product-type.application"
+  case CommandLineTool    = "com.apple.product-type.tool"
+  case UITests            = "com.apple.product-type.bundle.ui-testing"
+  case UnitTest           = "com.apple.product-type.bundle.unit-test"
 }
 
