@@ -188,6 +188,7 @@ public enum Path {
 public enum PBXProductType: String {
   case Application        = "com.apple.product-type.application"
   case CommandLineTool    = "com.apple.product-type.tool"
+  case Framework          = "com.apple.product-type.framework"
   case UITests            = "com.apple.product-type.bundle.ui-testing"
   case UnitTest           = "com.apple.product-type.bundle.unit-test"
 }
