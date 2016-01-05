@@ -54,6 +54,83 @@ public class PBXProject : PBXContainer {
   public lazy var targets: [PBXNativeTarget] = self.objects("targets")
   public lazy var mainGroup: PBXGroup = self.object("mainGroup")
   public lazy var buildConfigurationList: XCConfigurationList = self.object("buildConfigurationList")
+  var format: NSPropertyListFormat
+  
+  public convenience init(propertyListData data: NSData) throws {
+    
+    let options = NSPropertyListReadOptions.Immutable
+    var format: NSPropertyListFormat = NSPropertyListFormat.BinaryFormat_v1_0
+    let obj = try NSPropertyListSerialization.propertyListWithData(data, options: options, format: &format)
+    
+    guard let dict = obj as? JsonObject else {
+      throw ProjectFileError.InvalidData
+    }
+    
+    self.init(dict: dict, format: format)
+  }
+  
+  convenience init(dict: JsonObject, format: NSPropertyListFormat) {
+    let allObjects = AllObjects()
+    let objects = dict["objects"] as! [String: JsonObject]
+    let rootObjectId = dict["rootObject"] as! String
+    let projDict = objects[rootObjectId]!
+    
+    self.init(id: rootObjectId, dict: projDict, allObjects: allObjects)
+    self.format = format
+    
+    for (key, obj) in objects {
+      allObjects.dict[key] = PBXProject.createObject(key, dict: obj, allObjects: allObjects)
+    }
+    
+    for (key, obj) in objects {
+      allObjects.dict[key] = PBXProject.createObject(key, dict: obj, allObjects: allObjects)
+    }
+    self.allObjects.fullFilePaths = paths(self.mainGroup, prefix: "")
+  }
+
+  public required init(id: String, dict: AnyObject, allObjects: AllObjects) {
+    self.format = .OpenStepFormat
+    super.init(id: id, dict: dict, allObjects: allObjects)
+  }
+  
+  static func createObject(id: String, dict: JsonObject, allObjects: AllObjects) -> PBXObject {
+    let isa = dict["isa"] as? String
+    
+    if let isa = isa, let type = types[isa] {
+        return type.init(id: id, dict: dict, allObjects: allObjects)
+    }
+    
+    // Fallback
+    assertionFailure("Unknown PBXObject subclass isa=\(isa)")
+    return PBXObject(id: id, dict: dict, allObjects: allObjects)
+  }
+  
+  func paths(current: PBXGroup, prefix: String) -> [String: Path] {
+    
+    var ps: [String: Path] = [:]
+    
+    for file in current.fileRefs {
+      switch file.sourceTree {
+      case .Group:
+        ps[file.id] = .RelativeTo(.SourceRoot, prefix + "/" + file.path!)
+      case .Absolute:
+        ps[file.id] = .Absolute(file.path!)
+      case let .RelativeTo(sourceTreeFolder):
+        ps[file.id] = .RelativeTo(sourceTreeFolder, file.path!)
+      }
+    }
+    
+    for group in current.subGroups {
+      if let path = group.path {
+        ps += paths(group, prefix: prefix + "/" + path)
+      }
+      else {
+        ps += paths(group, prefix: prefix)
+      }
+    }
+    
+    return ps
+  }
 }
 
 public /* abstract */ class PBXContainerItem : PBXObject {

@@ -28,7 +28,6 @@ enum ProjectFileError : ErrorType, CustomStringConvertible {
 public class AllObjects {
   var dict: [String: PBXObject] = [:]
   var fullFilePaths: [String: Path] = [:]
-
   func object<T : PBXObject>(key: String) -> T {
     let obj = dict[key]!
     if let t = obj as? T {
@@ -40,47 +39,24 @@ public class AllObjects {
 }
 
 public class XCProjectFile {
-  public let project: PBXProject
-  let dict: JsonObject
-  var format: NSPropertyListFormat
-  let allObjects = AllObjects()
+  public let projectURL: NSURL?
+  public let project: PBXProject!
 
-  public convenience init(xcodeprojURL: NSURL) throws {
-
+  public init(xcodeprojURL: NSURL) throws {
+    
+    self.projectURL = xcodeprojURL
     let pbxprojURL = xcodeprojURL.URLByAppendingPathComponent("project.pbxproj")
     guard let data = NSData(contentsOfURL: pbxprojURL) else {
+      self.project = nil
       throw ProjectFileError.MissingPbxproj
     }
-
-    try self.init(propertyListData: data)
-  }
-
-  public convenience init(propertyListData data: NSData) throws {
-
-    let options = NSPropertyListReadOptions.Immutable
-    var format: NSPropertyListFormat = NSPropertyListFormat.BinaryFormat_v1_0
-    let obj = try NSPropertyListSerialization.propertyListWithData(data, options: options, format: &format)
-
-    guard let dict = obj as? JsonObject else {
-      throw ProjectFileError.InvalidData
+    
+    do {
+      self.project = try PBXProject(propertyListData: data)
+    } catch let error {
+      self.project = nil
+      throw error
     }
-
-    self.init(dict: dict, format: format)
-  }
-
-  init(dict: JsonObject, format: NSPropertyListFormat) {
-    self.dict = dict
-    self.format = format
-    let objects = dict["objects"] as! [String: JsonObject]
-
-    for (key, obj) in objects {
-      allObjects.dict[key] = XCProjectFile.createObject(key, dict: obj, allObjects: allObjects)
-    }
-
-    let rootObjectId = dict["rootObject"]! as! String
-    let projDict = objects[rootObjectId]!
-    self.project = PBXProject(id: rootObjectId, dict: projDict, allObjects: allObjects)
-    self.allObjects.fullFilePaths = paths(self.project.mainGroup, prefix: "")
   }
 
   static func projectName(url: NSURL) throws -> String {
@@ -93,46 +69,6 @@ public class XCProjectFile {
     }
 
     return last.substringToIndex(range.startIndex)
-  }
-
-  static func createObject(id: String, dict: JsonObject, allObjects: AllObjects) -> PBXObject {
-    let isa = dict["isa"] as? String
-
-    if let isa = isa,
-       let type = types[isa] {
-      return type.init(id: id, dict: dict, allObjects: allObjects)
-    }
-
-    // Fallback
-    assertionFailure("Unknown PBXObject subclass isa=\(isa)")
-    return PBXObject(id: id, dict: dict, allObjects: allObjects)
-  }
-
-  func paths(current: PBXGroup, prefix: String) -> [String: Path] {
-
-    var ps: [String: Path] = [:]
-
-    for file in current.fileRefs {
-      switch file.sourceTree {
-      case .Group:
-        ps[file.id] = .RelativeTo(.SourceRoot, prefix + "/" + file.path!)
-      case .Absolute:
-        ps[file.id] = .Absolute(file.path!)
-      case let .RelativeTo(sourceTreeFolder):
-        ps[file.id] = .RelativeTo(sourceTreeFolder, file.path!)
-      }
-    }
-
-    for group in current.subGroups {
-      if let path = group.path {
-        ps += paths(group, prefix: prefix + "/" + path)
-      }
-      else {
-        ps += paths(group, prefix: prefix)
-      }
-    }
-
-    return ps
   }
 }
 
